@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/TheCommishDeuce/jellyfin-plugin-jellygram/main/assets/plugin-card.png",
     "versions": [
       {
+        "version": "1.2.0.0",
+        "changelog": "Fix: a batch containing an episode or season that Jellyfin had not yet linked to its show failed with \"Guid can't be empty\" and was retried every 30 seconds for ever, blocking every later notification. Blank show and season IDs are now skipped, and the show name falls back to the episode's own details. One item whose details can't be read is now left out of its batch instead of failing the whole batch. A batch that still can't be sent after 5 attempts is dropped with an error in the log, so it can't jam later notifications. New \"Libraries to ignore\" setting: new items in the named libraries (or under folders starting with \"/\") are never announced. Useful for large IPTV or STRM libraries.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/p1zzm1ssile/jellyfin-plugin-jellygram/releases/download/v1.2.0.0/Jellygram_1.2.0.0.zip",
+        "checksum": "937897e2a3906596dca4c9ab8d8cfc03",
+        "timestamp": "2026-11-26T14:37:25Z"
+      },
+      {
         "version": "1.1.0.0",
         "changelog": "New-show digests now identify imported season numbers and compact multi-season ranges. The Jellyfin plugin page also uses a properly padded 16:9 image.",
         "targetAbi": "12.0.0.0",
