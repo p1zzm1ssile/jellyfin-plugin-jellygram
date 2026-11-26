@@ -14,6 +14,7 @@
             <div class="inputContainer"><label class="inputLabel" for="ChatId">Chat ID</label><input id="ChatId" type="text" is="emby-input" required></div>
             <div class="inputContainer"><label class="inputLabel" for="ThreadId">Topic/thread ID (optional)</label><input id="ThreadId" type="text" is="emby-input"></div>
             <div class="inputContainer"><label class="inputLabel" for="BatchSeconds">Batch window in seconds</label><input id="BatchSeconds" type="number" min="5" max="3600" is="emby-input"><div class="fieldDescription">The window restarts whenever another item is added. Recommended: 90.</div></div>
+            <div class="inputContainer"><label class="inputLabel" for="IgnoredLibraries">Libraries to ignore</label><input id="IgnoredLibraries" type="text" is="emby-input"><div class="fieldDescription">New items in these libraries are never announced. Library names separated by commas, for example: IPTV Movies, IPTV Shows. A folder starting with / also works, for example: /config/m3u-vod.</div></div>
             <label class="emby-checkbox-label"><input id="IncludeDescriptions" type="checkbox" is="emby-checkbox"><span>Include descriptions from Jellyfin metadata</span></label>
             <label class="emby-checkbox-label"><input id="IncludePosters" type="checkbox" is="emby-checkbox"><span>Include posters when Telegram's caption limit permits</span></label>
             <label class="emby-checkbox-label"><input id="Silent" type="checkbox" is="emby-checkbox"><span>Send silently</span></label>
@@ -27,14 +28,14 @@
             page.addEventListener('pageshow', async () => {
                 Dashboard.showLoadingMsg();
                 const config = await ApiClient.getPluginConfiguration(id);
-                for (const key of ['BotToken', 'ChatId', 'ThreadId', 'BatchSeconds']) document.querySelector('#' + key).value = config[key] ?? '';
+                for (const key of ['BotToken', 'ChatId', 'ThreadId', 'BatchSeconds', 'IgnoredLibraries']) document.querySelector('#' + key).value = config[key] ?? '';
                 for (const key of ['IncludeDescriptions', 'IncludePosters', 'Silent']) document.querySelector('#' + key).checked = !!config[key];
                 Dashboard.hideLoadingMsg();
             });
             document.querySelector('#JellygramConfigForm').addEventListener('submit', async event => {
                 event.preventDefault(); Dashboard.showLoadingMsg();
                 const config = await ApiClient.getPluginConfiguration(id);
-                for (const key of ['BotToken', 'ChatId', 'ThreadId']) config[key] = document.querySelector('#' + key).value.trim();
+                for (const key of ['BotToken', 'ChatId', 'ThreadId', 'IgnoredLibraries']) config[key] = document.querySelector('#' + key).value.trim();
                 config.BatchSeconds = Number(document.querySelector('#BatchSeconds').value) || 90;
                 for (const key of ['IncludeDescriptions', 'IncludePosters', 'Silent']) config[key] = document.querySelector('#' + key).checked;
                 const result = await ApiClient.updatePluginConfiguration(id, config);

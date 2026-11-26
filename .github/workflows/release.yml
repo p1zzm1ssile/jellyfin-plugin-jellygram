@@ -1,0 +1,103 @@
+name: Release
+
+# Builds the plugin, publishes a GitHub release and adds it to manifest.json, so Jellyfin can install it.
+# Run it from the Actions tab: Release -> Run workflow. The version comes from the .csproj
+# (<AssemblyVersion>), and the release notes from that version's section in CHANGELOG.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GUID: 'f68a16a5-3020-4fd3-92d4-9f06b09dfa9a'
+  TARGET_ABI: '12.0.0.0'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Work out the version
+        id: meta
+        run: |
+          VERSION=$(grep -oP '(?<=<AssemblyVersion>)[0-9.]+(?=</AssemblyVersion>)' Jellyfin.Plugin.Jellygram/Jellyfin.Plugin.Jellygram.csproj)
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG has already been released. Raise the version in the .csproj and add a CHANGELOG.md section first."; exit 1
+          fi
+          awk -v v="$VERSION" 'index($0, "## " v " ") == 1 {f = 1; next} /^## / && f {exit} f' CHANGELOG.md | sed '/^[[:space:]]*$/d' > CHANGES.md
+          if [ ! -s CHANGES.md ]; then
+            echo "::error::CHANGELOG.md has no section for $VERSION."; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: dotnet test Jellyfin.Plugin.Jellygram.sln -c Release
+
+      # Only the plugin's own DLL goes in the zip: Jellyfin already has its own copies of everything else.
+      - name: Build and package
+        id: package
+        run: |
+          dotnet build Jellyfin.Plugin.Jellygram/Jellyfin.Plugin.Jellygram.csproj -c Release --nologo
+          ZIP="Jellygram_${{ steps.meta.outputs.version }}.zip"
+          zip -X -j "$ZIP" Jellyfin.Plugin.Jellygram/bin/Release/net10.0/Jellyfin.Plugin.Jellygram.dll
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "md5=$(md5sum "$ZIP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp CHANGES.md NOTES.md
+          printf '\nMD5 checksum: `%s`\n' "${{ steps.package.outputs.md5 }}" >> NOTES.md
+          gh release create "${{ steps.meta.outputs.tag }}" "${{ steps.package.outputs.zip }}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "Jellygram ${{ steps.meta.outputs.version }}" \
+            --notes-file NOTES.md
+
+      - name: Add this version to manifest.json
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SOURCE_URL: https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag }}/${{ steps.package.outputs.zip }}
+          CHECKSUM: ${{ steps.package.outputs.md5 }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os
+          with open('manifest.json', encoding='utf-8') as f:
+              manifest = json.load(f)
+          plugin = next(p for p in manifest if p['guid'] == os.environ['GUID'])
+          version = os.environ['VERSION']
+          with open('CHANGES.md', encoding='utf-8') as f:
+              changelog = ' '.join(line.lstrip('- ').strip() for line in f if line.strip())
+          plugin['versions'] = [v for v in plugin['versions'] if v['version'] != version]
+          plugin['versions'].insert(0, {
+              'version': version,
+              'changelog': changelog,
+              'targetAbi': os.environ['TARGET_ABI'],
+              'sourceUrl': os.environ['SOURCE_URL'],
+              'checksum': os.environ['CHECKSUM'],
+              'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+          })
+          with open('manifest.json', 'w', encoding='utf-8') as f:
+              json.dump(manifest, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add manifest.json
+          git commit -m "Add $VERSION to manifest.json"
+          git push origin HEAD:main

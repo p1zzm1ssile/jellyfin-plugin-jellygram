@@ -1,3 +1,6 @@
+> **Fork note (p1zzm1ssile):** this fork fixes batches getting stuck on episodes that aren't linked to their show yet, and adds a "Libraries to ignore" setting. Install it from this repository's manifest:
+> `https://raw.githubusercontent.com/p1zzm1ssile/jellyfin-plugin-jellygram/main/manifest.json`
+
 <p align="center">
   <img src="assets/banner.png" alt="Jellygram" width="800">
 </p>
