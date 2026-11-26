@@ -6,7 +6,7 @@
     "owner": "TheCommishDeuce",
     "overview": "Grouped Telegram notifications for new Jellyfin media",
     "description": "Sends rich Telegram notifications when movies and TV are added to Jellyfin. Full shows, seasons, and episode imports are grouped to avoid notification spam.",
-    "imageUrl": "https://raw.githubusercontent.com/TheCommishDeuce/jellyfin-plugin-jellygram/main/assets/plugin-card.png",
+    "imageUrl": "https://raw.githubusercontent.com/p1zzm1ssile/jellyfin-plugin-jellygram/main/assets/plugin-card.png",
     "versions": [
       {
         "version": "1.2.0.0",
