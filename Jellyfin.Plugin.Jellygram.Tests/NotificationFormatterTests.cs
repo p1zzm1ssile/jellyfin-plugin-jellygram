@@ -60,6 +60,22 @@ public sealed class NotificationFormatterTests
         Assert.Contains("Space &amp; beyond", notification.Text);
     }
 
+    [Fact]
+    public void EpisodesWithoutAShowLinkStillFormat()
+    {
+        var items = new[]
+        {
+            Item(Guid.NewGuid(), "Episode", "Pilot", seriesName: "Orphan Show", seasonNumber: 1, episodeNumber: 1),
+            Item(Guid.NewGuid(), "Episode", "Untitled Clip")
+        };
+
+        var notifications = NotificationFormatter.Build(items, false);
+
+        Assert.Equal(2, notifications.Count);
+        Assert.Contains(notifications, n => n.Text.Contains("Orphan Show") && n.Text.Contains("S01E01"));
+        Assert.Contains(notifications, n => n.Text.Contains("Untitled Clip"));
+    }
+
     private static MediaItem Item(
         Guid id,
         string type,

@@ -2,6 +2,13 @@
 
 All notable changes to Jellygram are documented here.
 
+## 1.2.0.0 — 2026-11-26
+
+- Fix: a batch containing an episode or season that Jellyfin had not yet linked to its show failed with "Guid can't be empty" and was retried every 30 seconds for ever, blocking every later notification. Blank show and season IDs are now skipped, and the show name falls back to the episode's own details.
+- One item whose details can't be read is now left out of its batch instead of failing the whole batch.
+- A batch that still can't be sent after 5 attempts is dropped with an error in the log, so it can't jam later notifications.
+- New "Libraries to ignore" setting: new items in the named libraries (or under folders starting with "/") are never announced. Useful for large IPTV or STRM libraries.
+
 ## 1.1.0.0 — 2026-07-23
 
 - Show the imported season number in new-show digests, such as `Season 05 · 8 episodes`.

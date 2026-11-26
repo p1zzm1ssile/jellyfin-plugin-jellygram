@@ -16,9 +16,12 @@ public sealed class LibraryNotifier(
     ILogger<LibraryNotifier> logger) : BackgroundService
 {
     private const int MaxMetadataRetries = 10;
+    private const int MaxSendAttempts = 5;
+    private static readonly char[] ListSeparators = [',', ';', '\n', '\r'];
     private readonly ConcurrentDictionary<Guid, byte> _queue = new();
     private long _lastAddedTicks;
     private int _metadataRetryCount;
+    private int _sendFailures;
 
     public override Task StartAsync(CancellationToken cancellationToken)
     {
@@ -61,6 +64,13 @@ public sealed class LibraryNotifier(
             return;
         }
 
+        var configuration = Plugin.Instance?.Configuration;
+        if (configuration is not null && IsIgnored(eventArgs.Item, configuration))
+        {
+            logger.LogDebug("Not queuing {ItemName} for Telegram: it is in an ignored library", eventArgs.Item.Name);
+            return;
+        }
+
         _queue.TryAdd(eventArgs.Item.Id, 0);
         Interlocked.Exchange(ref _lastAddedTicks, DateTime.UtcNow.Ticks);
         logger.LogDebug("Queued {ItemType} {ItemName} for Telegram", eventArgs.Item.GetType().Name, eventArgs.Item.Name);
@@ -72,9 +82,11 @@ public sealed class LibraryNotifier(
         try
         {
             var libraryItems = ids
+                .Where(id => id != Guid.Empty)
                 .Select(libraryManager.GetItemById)
                 .Where(item => item is not null)
                 .Cast<BaseItem>()
+                .Where(item => !IsIgnored(item, configuration))
                 .ToList();
             var incompleteItems = libraryItems.Where(IsMetadataIncomplete).ToList();
             if (incompleteItems.Count > 0 && _metadataRetryCount < MaxMetadataRetries)
@@ -97,11 +109,23 @@ public sealed class LibraryNotifier(
                     MaxMetadataRetries);
             }
 
-            var items = libraryItems
-                .Select(Convert)
-                .Where(item => item is not null)
-                .Cast<MediaItem>()
-                .ToList();
+            // One item that can't be read must not block the whole batch: skip it and send the rest.
+            var items = new List<MediaItem>();
+            foreach (var libraryItem in libraryItems)
+            {
+                try
+                {
+                    if (Convert(libraryItem) is { } converted)
+                    {
+                        items.Add(converted);
+                    }
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Leaving {ItemName} ({ItemId}) out of the Telegram batch: its details could not be read", libraryItem.Name, libraryItem.Id);
+                }
+            }
+
             var notifications = NotificationFormatter.Build(items, configuration.IncludeDescriptions);
             foreach (var notification in notifications)
             {
@@ -114,11 +138,26 @@ public sealed class LibraryNotifier(
             }
 
             _metadataRetryCount = 0;
+            _sendFailures = 0;
             logger.LogInformation("Sent {NotificationCount} Telegram notifications for {ItemCount} library items", notifications.Count, items.Count);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogError(exception, "Could not send Jellygram batch; it will be retried");
+            // Retrying for ever would jam every later notification behind this batch, so give up after a few tries.
+            if (++_sendFailures >= MaxSendAttempts)
+            {
+                foreach (var id in ids)
+                {
+                    _queue.TryRemove(id, out _);
+                }
+
+                _sendFailures = 0;
+                _metadataRetryCount = 0;
+                logger.LogError(exception, "Giving up on a Jellygram batch of {ItemCount} items after {AttemptCount} failed attempts; newly added items will be sent as normal", ids.Length, MaxSendAttempts);
+                return;
+            }
+
+            logger.LogError(exception, "Could not send Jellygram batch (attempt {Attempt}/{MaxAttempts}); it will be retried", _sendFailures, MaxSendAttempts);
             ScheduleRetry(configuration, 30);
         }
     }
@@ -149,8 +188,8 @@ public sealed class LibraryNotifier(
             Season season => New(
                 season,
                 "Season",
-                season.SeriesId,
-                season.Series?.Name ?? libraryManager.GetItemById(season.SeriesId)?.Name,
+                NullIfEmpty(season.SeriesId),
+                season.Series?.Name ?? Lookup(season.SeriesId)?.Name ?? NullIfBlank(season.SeriesName),
                 null,
                 season.IndexNumber,
                 null,
@@ -158,14 +197,58 @@ public sealed class LibraryNotifier(
             Episode episode => New(
                 episode,
                 "Episode",
-                episode.SeriesId,
-                episode.Series?.Name ?? libraryManager.GetItemById(episode.SeriesId)?.Name,
-                episode.SeasonId,
-                episode.ParentIndexNumber ?? (libraryManager.GetItemById(episode.SeasonId) as Season)?.IndexNumber,
+                NullIfEmpty(episode.SeriesId),
+                episode.Series?.Name ?? Lookup(episode.SeriesId)?.Name ?? NullIfBlank(episode.SeriesName),
+                NullIfEmpty(episode.SeasonId),
+                episode.ParentIndexNumber ?? (Lookup(episode.SeasonId) as Season)?.IndexNumber,
                 episode.IndexNumber,
                 imagePath),
             _ => null
         };
+    }
+
+    // Jellyfin throws on a blank ID, and items that haven't been linked to their show or season yet have one.
+    private BaseItem? Lookup(Guid id) => id == Guid.Empty ? null : libraryManager.GetItemById(id);
+
+    private static Guid? NullIfEmpty(Guid id) => id == Guid.Empty ? null : id;
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    // Ignored libraries are matched by library name, or by folder when the entry starts with "/".
+    private bool IsIgnored(BaseItem item, PluginConfiguration configuration)
+    {
+        var entries = (configuration.IgnoredLibraries ?? string.Empty)
+            .Split(ListSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (entries.Length == 0)
+        {
+            return false;
+        }
+
+        var path = item.Path ?? string.Empty;
+        foreach (var folder in entries.Where(entry => entry.StartsWith('/')).Select(entry => entry.TrimEnd('/')))
+        {
+            if (path.Equals(folder, StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        var names = entries.Where(entry => !entry.StartsWith('/')).ToList();
+        if (names.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            return libraryManager.GetCollectionFolders(item).Any(library => names.Contains(library.Name, StringComparer.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogDebug(exception, "Could not work out which library {ItemName} belongs to", item.Name);
+            return false;
+        }
     }
 
     private static MediaItem New(

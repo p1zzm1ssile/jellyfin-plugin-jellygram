@@ -17,4 +17,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public bool IncludePosters { get; set; } = true;
 
     public bool Silent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the libraries whose new items are never announced: library names, or folders starting with "/",
+    /// separated by commas or new lines.
+    /// </summary>
+    public string IgnoredLibraries { get; set; } = string.Empty;
 }
