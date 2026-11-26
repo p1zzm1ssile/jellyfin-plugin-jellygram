@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TheCommishDeuce/jellyfin-plugin-jellygram/actions/workflows/ci.yml"><img src="https://github.com/TheCommishDeuce/jellyfin-plugin-jellygram/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/p1zzm1ssile/jellyfin-plugin-jellygram/actions/workflows/ci.yml"><img src="https://github.com/p1zzm1ssile/jellyfin-plugin-jellygram/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Jellyfin-12.0.0--rc2-00A4DC" alt="Jellyfin 12.0.0-rc2">
 </p>
@@ -118,14 +118,14 @@ Jellyfin plugins are ABI-specific. Do not install this build on Jellyfin 10.10 o
 Add this URL under **Dashboard → Plugins → Repositories**:
 
 ```text
-https://raw.githubusercontent.com/TheCommishDeuce/jellyfin-plugin-jellygram/main/manifest.json
+https://raw.githubusercontent.com/p1zzm1ssile/jellyfin-plugin-jellygram/main/manifest.json
 ```
 
 Then install **Jellygram** from the plugin catalog and restart Jellyfin.
 
 ### Manual Docker installation
 
-1. Download `Jellygram_1.1.0.0.zip` from the GitHub release.
+1. Download `Jellygram_1.2.0.0.zip` from this fork's [GitHub releases](https://github.com/p1zzm1ssile/jellyfin-plugin-jellygram/releases).
 2. Extract `Jellyfin.Plugin.Jellygram.dll` into the Jellyfin configuration volume:
 
    ```text
